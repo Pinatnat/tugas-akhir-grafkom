@@ -1,0 +1,489 @@
+<html>
+<head>
+    <!-- Template used from Sample Hierarchical Modelling with lighting, texture and shadow -->
+    <title>Final Project</title>
+    <meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
+
+    <script type="text/javascript" src="js/glMatrix-0.9.5.min.js"></script>
+    <script type="text/javascript" src="js/webgl-utils.js"></script>
+
+    <script id="vs-shadowmap" type="x-shader/x-vertex"> #version 300 es
+
+                uniform mat4 uMVMatrix;
+                uniform mat4 uPMatrix;
+
+                in vec3 aVertexPosition;
+
+                out vec4 vPosition;
+
+                void main() {
+                    vPosition = uMVMatrix * vec4(aVertexPosition, 1.0);
+                    gl_Position = uPMatrix * vPosition;
+                }
+    </script>
+
+    <script id="fs-shadowmap" type="x-shader/x-fragment">#version 300 es
+
+               precision mediump int;
+               precision mediump float;
+
+               in vec4 vPosition;
+               out vec4 fragColor;
+
+               uniform vec3 uPointLightingLocation;
+               uniform float uFarPlane;
+
+               void main() {
+                   // get distance between fragment and light source
+                   float lightDistance = length(vPosition.xyz - uPointLightingLocation);
+
+                   // map to [0;1] range by dividing by far_plane
+                   lightDistance = lightDistance / uFarPlane;
+
+                   // write this as modified depth
+                   fragColor = vec4(lightDistance, 0.0, 0.0, 1.0);
+
+               }
+    </script>
+
+    <script id="vs" type="x-shader/x-vertex"> #version 300 es
+
+                in vec3 aVertexPosition;
+                in vec3 aVertexNormal;
+
+                uniform mat4 uMVMatrix;
+                uniform mat4 uPMatrix;
+                uniform mat3 uNMatrix;
+
+                in  vec2 vTexCoord;
+
+                out vec2 fTexCoord;
+                out vec3 vTransformedNormal;
+                out vec4 vPosition;
+
+                void main(void) {
+                    vPosition = uMVMatrix * vec4(aVertexPosition, 1.0);
+                    gl_Position = uPMatrix * vPosition;
+                    fTexCoord = vTexCoord;
+                    vTransformedNormal = uNMatrix * aVertexNormal;
+                }
+    </script>
+
+    <script id="fs" type="x-shader/x-fragment"> #version 300 es
+
+                precision mediump float;
+
+                in vec2 fTexCoord;
+                in vec3 vTransformedNormal;
+                in vec4 vPosition;
+                in vec4 vVertexRelativeToLight;
+
+                out vec4 fragColor;
+
+                uniform vec3 uMaterialAmbientColor;
+                uniform vec3 uMaterialDiffuseColor;
+                uniform vec3 uMaterialSpecularColor;
+                uniform float uMaterialShininess;
+                uniform float uFarPlane;
+
+                uniform vec3 uAmbientColor;
+
+                uniform vec3 uPointLightingLocation;
+                uniform vec3 uPointLightingSpecularColor;
+                uniform vec3 uPointLightingDiffuseColor;
+
+                uniform bool uUseLighting;
+                uniform bool uUseMaterial;
+                uniform bool uUseTexture;
+
+                uniform sampler2D thetexture;
+                uniform samplerCube shadowmap;
+
+                bool in_shadow(void) {
+                    vec3 fragToLight = vPosition.xyz - uPointLightingLocation;
+                    float closestDepth = texture(shadowmap, fragToLight).x;
+                    closestDepth *= uFarPlane;
+                    float currentDepth = length(fragToLight);
+                    // now test for shadows
+                    float bias = 0.3;
+                    return (currentDepth -  bias > closestDepth);
+                }
+
+                void main(void) {
+
+                    vec3 materialAmbientColor = vec3(1.0, 1.0, 1.0);
+                    vec3 materialDiffuseColor = vec3(1.0, 1.0, 1.0);
+                    vec3 materialSpecularColor = vec3(1.0, 1.0, 1.0);
+                    if(uUseMaterial) {
+                        materialAmbientColor = uMaterialAmbientColor;
+                        materialDiffuseColor = uMaterialDiffuseColor;
+                        materialSpecularColor = uMaterialSpecularColor;
+                    }
+
+                    float alpha = 1.0;
+
+                    if(uUseTexture) {
+                        vec4 textureColor = texture(thetexture, vec2(fTexCoord.s, fTexCoord.t));
+                        materialAmbientColor = materialAmbientColor * textureColor.rgb;
+                        materialDiffuseColor = materialDiffuseColor * textureColor.rgb;
+                        alpha = textureColor.a;
+                    }
+
+                    vec3 ambientLightWeighting = uAmbientColor;
+
+
+                    if(uUseLighting) {
+
+                        vec3 lightDirection = normalize(uPointLightingLocation - vPosition.xyz);
+                        vec3 normal = normalize(vTransformedNormal);
+
+                        vec3 specularLightWeighting = vec3(0.0, 0.0, 0.0);
+                        vec3 eyeDirection = normalize(-vPosition.xyz);
+                        vec3 reflectionDirection = reflect(-lightDirection, normal);
+
+                        float specularLightBrightness = pow(max(dot(reflectionDirection, eyeDirection), 0.0), uMaterialShininess);
+                        specularLightWeighting = uPointLightingSpecularColor * specularLightBrightness;
+
+                        float diffuseLightBrightness = max(dot(normal, lightDirection), 0.0);
+                        vec3 diffuseLightWeighting = uPointLightingDiffuseColor * diffuseLightBrightness;
+
+                        if(in_shadow()) {
+                            diffuseLightWeighting = vec3(0.0, 0.0, 0.0);
+                            specularLightWeighting = vec3(0.0, 0.0, 0.0);
+                        }
+
+                        fragColor = vec4(materialAmbientColor * ambientLightWeighting
+                            + materialDiffuseColor * diffuseLightWeighting
+                            + materialSpecularColor * specularLightWeighting,
+                            alpha);
+                    } else {
+                        fragColor = vec4(materialAmbientColor  * ambientLightWeighting, alpha);
+                    }
+
+                }
+    </script>
+
+    <script type="text/javascript" src="js/script.js"></script>
+
+    <link rel="stylesheet" href="css/bootstrap.min.css">
+    <link rel="stylesheet" href="css/w3.css">
+    <link rel="stylesheet" href="css/ws2.css">
+
+    <script src="js/jquery.min.js"></script>
+    <script src="js/bootstrap.min.js"></script>
+
+</head>
+
+<body onload="webGLStart();" class="w3-black m-5">
+
+    <span style="font-size:30px;cursor:pointer" onclick="openNav()">&#9776; Menu</span>
+    <div id="mySidenav" class="sidenav">
+        <a href="javascript:void(0)" class="closebtn" onclick="closeNav()">&times;</a>
+
+        <input type="checkbox" id="animation" checked /> Use animation<br />
+        <input type="checkbox" id="lighting" checked /> Use lighting<br />
+        <input type="checkbox" id="texture" checked /> Use texture<br />
+        <div class="input-light">
+            <h2>POV Setting</h2>
+            <div>
+                <select class="form-control form-control-sm" id="camera-setting">
+                    <option value=0>Free Control</option>
+                    <option value=1>Default</option>
+                    <option value=2>Focus Camera</option>
+                    <option value=3>Focus Duck</option>
+                </select>
+            </div>
+            <h2>POV</h2>
+            <div>
+                POV X position<br />
+                <input type="range" min="-100" max="100" value="0" class="slider" id="cameraPositionX">
+            </div>
+            <div>
+                POV Y position<br />
+                <input type="range" min="-50" max="50" value="0" class="slider" id="cameraPositionY">
+            </div>
+            <div>
+                POV Z position<br />
+                <input type="range" min="-200" max="300" value="-200" class="slider" id="cameraPositionZ">
+            </div>
+            <div>
+                POV X Angle<br />
+                <input type="range" min="-360" max="360" value="0" class="slider" id="cameraAngleX">
+            </div>
+            <div>
+                POV Y Angle<br />
+                <input type="range" min="-360" max="360" value="0" class="slider" id="cameraAngleY">
+            </div>
+            <div>
+                POV Z Angle<br />
+                <input type="range" min="-360" max="360" value="-200" class="slider" id="cameraAngleZ">
+            </div>
+            <h2>Point light</h2>
+            <div>
+                X<br />
+                <input type="range" min="-100" max="100" value="0" class="slider" id="lightPositionX">
+            </div>
+            <div>
+                Y<br />
+                <input type="range" min="-50" max="50" value="0" class="slider" id="lightPositionY">
+            </div>
+            <div>
+                Z<br />
+                <input type="range" min="-300" max="-100" value="-200" class="slider" id="lightPositionZ">
+            </div>
+            <div>
+                R: <br />  <input type="text" id="pointR" value="0.5" />
+            </div>
+            <div>
+                G: <br />  <input type="text" id="pointG" value="0.5" />
+            </div>
+            <div>
+                B:  <br /> <input type="text" id="pointB" value="0.5" />
+            </div>
+        </div>
+        <div class="input-light">
+            <h2>Ambient light</h2>
+            <div>
+                R: <br />  <input type="text" id="ambientR" value="0.2" />
+            </div>
+            <div>
+                G:  <br /> <input type="text" id="ambientG" value="0.2" />
+            </div>
+            <div>
+                B:  <br /> <input type="text" id="ambientB" value="0.2" />
+            </div>
+        </div>
+        <div>
+            <h2>Arm Material</h2>
+            <div>
+                <select class="form-control form-control-sm" id="arm-material">
+                    <option value="none">None</option>
+                    <option value="brass">Brass</option>
+                    <option value="chrome">Chrome</option>
+                    <option value="bronze">Bronze</option>
+                    <option value="gold">Gold</option>
+                    <option value="forest">Forest</option>
+                    <option value="copper">Copper</option>
+                </select>
+            </div>
+            <h2>Camera Material</h2>
+            <div>
+                <select class="form-control form-control-sm" id="camera-material">
+                    <option value="none">None</option>
+                    <option value="brass">Brass</option>
+                    <option value="chrome">Chrome</option>
+                    <option value="bronze">Bronze</option>
+                    <option value="gold">Gold</option>
+                    <option value="forest">Forest</option>
+                    <option value="copper">Copper</option>
+                </select>
+            </div>
+            <h2>Room Material</h2>
+            <div>
+                <select class="form-control form-control-sm" id="room-material">
+                    <option value="none">None</option>
+                    <option value="brass">Brass</option>
+                    <option value="chrome">Chrome</option>
+                    <option value="bronze">Bronze</option>
+                    <option value="gold">Gold</option>
+                    <option value="forest">Forest</option>
+                    <option value="copper">Copper</option>
+                </select>
+            </div>
+            <h2>Duck Material</h2>
+            <div>
+                <select class="form-control form-control-sm" id="Duck-material">
+                    <option value="none">None</option>
+                    <option value="brass">Brass</option>
+                    <option value="chrome">Chrome</option>
+                    <option value="bronze">Bronze</option>
+                    <option value="gold">Gold</option>
+                    <option value="forest">Forest</option>
+                    <option value="copper">Copper</option>
+                </select>
+            </div>
+            <h2>SnowMan Material</h2>
+            <div>
+                <select class="form-control form-control-sm" id="SnowMan-material">
+                    <option value="none">None</option>
+                    <option value="brass">Brass</option>
+                    <option value="chrome">Chrome</option>
+                    <option value="bronze">Bronze</option>
+                    <option value="gold">Gold</option>
+                    <option value="forest">Forest</option>
+                    <option value="copper">Copper</option>
+                </select>
+            </div>
+            <h2>Dog Material</h2>
+            <div>
+                <select class="form-control form-control-sm" id="Dog-material">
+                    <option value="none">None</option>
+                    <option value="brass">Brass</option>
+                    <option value="chrome">Chrome</option>
+                    <option value="bronze">Bronze</option>
+                    <option value="gold">Gold</option>
+                    <option value="forest">Forest</option>
+                    <option value="copper">Copper</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Avatar image in top left corner -->
+        <h2>Arms</h2>
+        <div>
+            Arm Rotation <br />
+            <input type="range" min="0" max="360" value="0" class="slider" id="baseArmRotationSlider" disabled>
+        </div>
+        <div>
+            Second Arm Rotation<br />
+            <input type="range" min="0" max="90" value="0" class="slider" id="secondArmRotationSlider" disabled>
+        </div>
+        <div>
+            Palm Rotation<br />
+            <input type="range" min="0" max="360" value="0" class="slider" id="palmRotationSlider" disabled>
+        </div>
+        <div>
+            First Finger (Base) Rotation<br />
+            <input type="range" min="-45" max="23" value="0" class="slider" id="firstFingerBaseRotationSlider" disabled>
+        </div>
+        <div>
+            First Finger (Top) Rotation<br />
+            <input type="range" min="0" max="23" value="0" class="slider" id="firstFingerTopRotationSlider" disabled>
+        </div>
+        <div>
+            Second Finger (Base) Rotation<br />
+            <input type="range" min="-45" max="23" value="0" class="slider" id="secondFingerBaseRotationSlider" disabled>
+        </div>
+        <div>
+            Second Finger (Top) Rotation<br />
+            <input type="range" min="0" max="23" value="0" class="slider" id="secondFingerTopRotationSlider" disabled>
+        </div>
+        <div>
+            Third Finger (Base) Rotation<br />
+            <input type="range" min="-45" max="23" value="0" class="slider" id="thirdFingerBaseRotationSlider" disabled>
+        </div>
+        <div>
+            Third Finger (Top) Rotation<br />
+            <input type="range" min="0" max="23" value="0" class="slider" id="thirdFingerTopRotationSlider" disabled>
+        </div>
+
+        <h2>CAMERA</h2>
+        <div>
+            Camera Rotation<br />
+            <input type="range" min="0" max="360" value="0" class="slider" id="baseCameraRotationSlider" disabled>
+        </div>
+        <div>
+            First Tripod Leg Rotation<br />
+            <input type="range" min="0" max="45" value="0" class="slider" id="firstCameraLegRotationSlider" disabled>
+        </div>
+        <div>
+            Second Tripod Leg Rotation<br />
+            <input type="range" min="0" max="45" value="0" class="slider" id="secondCameraLegRotationSlider" disabled>
+        </div>
+        <div>
+            Third Tripod Leg Rotation<br />
+            <input type="range" min="0" max="45" value="0" class="slider" id="thirdCameraLegRotationSlider" disabled>
+        </div>
+        <div>
+            Camera First Zooming Layer Translation<br />
+            <input type="range" min="5" max="30" value="0" class="slider" id="secondCameraBodyTranslationSlider" disabled>
+        </div>
+        <div>
+            Camera Second Zooming Layer Translation<br />
+            <input type="range" min="5" max="20" value="0" class="slider" id="thirdCameraBodyTranslationSlider" disabled>
+        </div>
+        <div>
+            Camera Third Zooming Layer Translation<br />
+            <input type="range" min="5" max="20" value="0" class="slider" id="fourthCameraBodyTranslationSlider" disabled>
+        </div>
+        <div>
+            Camera Lens Translation<br />
+            <input type="range" min="5" max="25" value="0" class="slider" id="lensCameraTranslationSlider" disabled>
+        </div>
+        <div>
+            Camera Shutter Translation<br />
+            <input type="range" min="45" max="55" value="0" class="slider" id="shutterCameraTranslationSlider" disabled>
+        </div>
+        <h2>Duck</h2>
+        <div>
+            Duck Body Rotation<br />
+            <input type="range" min="0" max="360" value="0" class="slider" id="baseDuckBodySlider" disabled>
+        </div>
+        <div>
+            Duck Head Rotation<br />
+            <input type="range" min="40" max="90" value="0" class="slider" id="baseDuckHeadSlider" disabled>
+        </div>
+        <div>
+            Duck Neck Rotation<br />
+            <input type="range" min="80" max="160" value="0" class="slider" id="baseDuckNeckSlider" disabled>
+        </div>
+        <div>
+            Duck Upper Leg Rotation 1<br />
+            <input type="range" min="45" max="135" value="0" class="slider" id="baseDuckFirstUpSlider" disabled>
+        </div>
+        <div>
+            Duck Feet Rotation 1<br />
+            <input type="range" min="90" max="120" value="0" class="slider" id="baseDuckFirstDownSlider" disabled>
+        </div>
+        <div>
+            Duck Upper Leg Rotation 2<br />
+            <input type="range" min="45" max="135" value="0" class="slider" id="baseDuckSecondUpSlider" disabled>
+        </div>
+        <div>
+            Duck Feet Rotation 2<br />
+            <input type="range" min="90" max="120" value="0" class="slider" id="baseDuckSecondDownSlider" disabled>
+        </div>
+        <div>
+            Duck First Wing Rotation<br />
+            <input type="range" min="330" max="350" value="0" class="slider" id="baseDuckFirstWingSlider" disabled>
+        </div>
+        <div>
+            Duck Second Wing Rotation<br />
+            <input type="range" min="240" max="260" value="0" class="slider" id="baseDuckSecondWingSlider" disabled>
+        </div>
+
+        <h2>SnowMan</h2>
+        <div>
+            SnowMan X<br />
+            <input type="range" min="-100" max="80" value="0" class="slider" id="SnowManPositionX">
+        </div>
+        <div>
+            SnowMan Y<br />
+            <input type="range" min="-70" max="30" value="0" class="slider" id="SnowManPositionY">
+        </div>
+        <div>
+            SnowMan Z<br />
+            <input type="range" min="-100" max="50" value="-200" class="slider" id="SnowManPositionZ">
+        </div>
+
+        <h2>Dog</h2>
+        <div>
+            Dog X position<br />
+            <input type="range" min="-100" max="80" value="0" class="slider" id="DogPositionX">
+        </div>
+        <div>
+            Dog Y position<br />
+            <input type="range" min="-70" max="30" value="0" class="slider" id="DogPositionY">
+        </div>
+        <div>
+            Dog Z position<br />
+            <input type="range" min="-50" max="100" value="-200" class="slider" id="DogPositionZ">
+        </div>
+        <div>
+            Dog X Angle<br />
+            <input type="range" min="0" max="360" value="0" class="slider" id="DogAngleX">
+        </div>
+        <div>
+            Dog Y Angle<br />
+            <input type="range" min="0" max="360" value="0" class="slider" id="DogAngleY">
+        </div>
+        <div>
+            Dog Z Angle<br />
+            <input type="range" min="0" max="360" value="-200" class="slider" id="DogAngleZ">
+        </div>
+    </div>
+    <div>
+        <canvas id="canvas" style="border: none;" width="1024" height="768"></canvas>
+    </div>
+</body>
+</html>
