@@ -5,6 +5,7 @@ Pengerjaan proyek akhir ini menggunakan template dari scele
 Sample Hierarchical Modelling
 
 Link Video Presentasi: https://youtu.be/RqTUpFZhqj8
+Link source code: https://github.com/Pinatnat/tugas-akhir-grafkom
 
 Struktur Data:
 	1. index.html = file html untuk tampilan dan input
