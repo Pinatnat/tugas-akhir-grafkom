@@ -2,8 +2,9 @@ Documentation Final Project
 Nadya Aprillia / 1906398566
 
 Pengerjaan proyek akhir ini menggunakan template dari scele
-Sample Hierarchical Modelling - https://scele.cs.ui.ac.id/mod/resource/view.php?id=135108
-Referensi sisanya tercantum pada source code
+Sample Hierarchical Modelling
+
+Link Video Presentasi: https://youtu.be/RqTUpFZhqj8
 
 Struktur Data:
 	1. index.html = file html untuk tampilan dan input
